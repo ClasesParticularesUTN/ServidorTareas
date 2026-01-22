@@ -1,5 +1,4 @@
 const express = require("express");
-const cors = require("cors");
 const fs = require("fs");
 const { exec, spawn } = require("child_process");
 const { randomUUID } = require("crypto");
@@ -7,20 +6,24 @@ const path = require("path");
 
 const app = express();
 
-/* ======================= CORS (CLAVE) ======================= */
-app.use(cors({
-  origin: [
-    "https://clasesparticularesutn.com.ar",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000"
-  ],
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type"]
-}));
+/* =========================================================
+   CORS MANUAL (OBLIGATORIO PARA RENDER + DOMINIO EXTERNO)
+   ========================================================= */
+app.use((req, res, next) => {
+  // 👉 ORIGEN DE TU FRONT
+  res.header("Access-Control-Allow-Origin", "https://clasesparticularesutn.com.ar");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
 
-// 🔴 NECESARIO para preflight
-app.options("*", cors());
+  // Preflight
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
 
+  next();
+});
+
+/* ========================================================= */
 app.use(express.json());
 
 /* ======================= CONFIG ======================= */
@@ -139,35 +142,59 @@ function humanizarErrores(stderr, codeLines) {
     const codigo = numLinea ? codeLines[numLinea - 1] : "";
 
     if (/expected.*;/.test(linea)) {
-      return formatearError(numLinea, codigo, "Falta un punto y coma (;).", "En C++, casi todas las instrucciones terminan con ;");
+      return formatearError(numLinea, codigo,
+        "Falta un punto y coma (;).",
+        "En C++, casi todas las instrucciones terminan con ;"
+      );
     }
 
     if (/expected.*\}/.test(linea)) {
-      return formatearError(numLinea, codigo, "Falta cerrar una llave }.", "Cada { debe tener su }.");
+      return formatearError(numLinea, codigo,
+        "Falta cerrar una llave }.",
+        "Cada { debe tener su } correspondiente."
+      );
     }
 
     if (/expected.*\)/.test(linea)) {
-      return formatearError(numLinea, codigo, "Falta cerrar un paréntesis ).", "Revisá condiciones y funciones.");
+      return formatearError(numLinea, codigo,
+        "Falta cerrar un paréntesis ).",
+        "Revisá condiciones o llamadas a funciones."
+      );
     }
 
     if (/missing terminating " character/.test(linea)) {
-      return formatearError(numLinea, codigo, "String sin cerrar.", "Cada \" debe cerrarse.");
+      return formatearError(numLinea, codigo,
+        "String sin cerrar.",
+        "Cada \" debe tener su comilla de cierre."
+      );
     }
 
     if (/expected primary-expression/.test(linea)) {
-      return formatearError(numLinea, codigo, "Expresión incompleta.", "Falta una variable, número o función.");
+      return formatearError(numLinea, codigo,
+        "Expresión incompleta.",
+        "Falta una variable, número o función."
+      );
     }
 
     if (/expected declaration before/.test(linea)) {
-      return formatearError(numLinea, codigo, "Llave } de más.", "Cerraste una llave que no abriste.");
+      return formatearError(numLinea, codigo,
+        "Llave } de más.",
+        "Cerraste una llave que no abriste."
+      );
     }
 
     if (/was not declared in this scope/.test(linea)) {
       const m2 = linea.match(/‘(.+?)’ was not declared/);
-      return formatearError(numLinea, codigo, `Identificador '${m2 ? m2[1] : ""}' no declarado.`, "Declaralo antes de usarlo.");
+      return formatearError(numLinea, codigo,
+        `Identificador '${m2 ? m2[1] : ""}' no declarado.`,
+        "Declaralo antes de usarlo."
+      );
     }
 
-    return formatearError(numLinea, codigo, "Error de sintaxis.", "Revisá esta línea y la anterior.");
+    return formatearError(numLinea, codigo,
+      "Error de sintaxis.",
+      "Revisá esta línea y la anterior."
+    );
   }
 
   return "❗ Error de compilación.";
