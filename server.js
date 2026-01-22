@@ -6,10 +6,24 @@ const { randomUUID } = require("crypto");
 const path = require("path");
 
 const app = express();
-app.use(cors());
+
+/* ======================= CORS (CLAVE) ======================= */
+app.use(cors({
+  origin: [
+    "https://clasesparticularesutn.com.ar",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000"
+  ],
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"]
+}));
+
+// 🔴 NECESARIO para preflight
+app.options("*", cors());
+
 app.use(express.json());
 
-// ================= CONFIG =================
+/* ======================= CONFIG ======================= */
 const MAX_OUTPUT_LENGTH = 100 * 1024; // 100 KB
 const TIMEOUT_MS = 5000;
 
@@ -19,7 +33,7 @@ if (!fs.existsSync(TMP_DIR)) {
   fs.mkdirSync(TMP_DIR);
 }
 
-// ================= ENDPOINT =================
+/* ======================= ENDPOINT ======================= */
 app.post("/compile", (req, res) => {
   const { code, input } = req.body;
 
@@ -113,111 +127,53 @@ app.post("/compile", (req, res) => {
   });
 });
 
-// ================= ERRORES PEDAGÓGICOS =================
+/* ======================= ERRORES PEDAGÓGICOS ======================= */
 function humanizarErrores(stderr, codeLines) {
   const lineas = stderr.split("\n");
 
   for (const linea of lineas) {
     if (!linea.includes("error:")) continue;
 
-    const matchLinea = linea.match(/:(\d+):\d+:/);
-    const numLinea = matchLinea ? parseInt(matchLinea[1]) : null;
+    const m = linea.match(/:(\d+):\d+:/);
+    const numLinea = m ? parseInt(m[1]) : null;
     const codigo = numLinea ? codeLines[numLinea - 1] : "";
 
     if (/expected.*;/.test(linea)) {
-      return formatearError({
-        linea: numLinea,
-        codigo,
-        error: "Falta un punto y coma (;).",
-        ayuda: "En C++, casi todas las instrucciones terminan con ;"
-      });
+      return formatearError(numLinea, codigo, "Falta un punto y coma (;).", "En C++, casi todas las instrucciones terminan con ;");
     }
 
     if (/expected.*\}/.test(linea)) {
-      return formatearError({
-        linea: numLinea,
-        codigo,
-        error: "Falta cerrar una llave }.",
-        ayuda: "Cada { debe tener su } correspondiente."
-      });
+      return formatearError(numLinea, codigo, "Falta cerrar una llave }.", "Cada { debe tener su }.");
     }
 
     if (/expected.*\)/.test(linea)) {
-      return formatearError({
-        linea: numLinea,
-        codigo,
-        error: "Falta cerrar un paréntesis ).",
-        ayuda: "Revisá condiciones y llamadas a funciones."
-      });
+      return formatearError(numLinea, codigo, "Falta cerrar un paréntesis ).", "Revisá condiciones y funciones.");
     }
 
     if (/missing terminating " character/.test(linea)) {
-      return formatearError({
-        linea: numLinea,
-        codigo,
-        error: "String sin cerrar.",
-        ayuda: "Cada \" debe tener su comilla de cierre."
-      });
+      return formatearError(numLinea, codigo, "String sin cerrar.", "Cada \" debe cerrarse.");
     }
 
     if (/expected primary-expression/.test(linea)) {
-      return formatearError({
-        linea: numLinea,
-        codigo,
-        error: "Expresión incompleta.",
-        ayuda: "Falta una variable, número o llamada a función."
-      });
+      return formatearError(numLinea, codigo, "Expresión incompleta.", "Falta una variable, número o función.");
     }
 
     if (/expected declaration before/.test(linea)) {
-      return formatearError({
-        linea: numLinea,
-        codigo,
-        error: "Llave } de más.",
-        ayuda: "Probablemente cerraste una llave que no abriste."
-      });
+      return formatearError(numLinea, codigo, "Llave } de más.", "Cerraste una llave que no abriste.");
     }
 
     if (/was not declared in this scope/.test(linea)) {
-      const m = linea.match(/‘(.+?)’ was not declared/);
-      if (m && ["cout", "cin", "endl"].includes(m[1])) {
-        return formatearError({
-          linea: numLinea,
-          codigo,
-          error: `Uso incorrecto de ${m[1]}.`,
-          ayuda: "¿Te falta #include <iostream> o using namespace std?"
-        });
-      }
-
-      return formatearError({
-        linea: numLinea,
-        codigo,
-        error: `Identificador '${m ? m[1] : ""}' no declarado.`,
-        ayuda: "Declaralo antes de usarlo."
-      });
+      const m2 = linea.match(/‘(.+?)’ was not declared/);
+      return formatearError(numLinea, codigo, `Identificador '${m2 ? m2[1] : ""}' no declarado.`, "Declaralo antes de usarlo.");
     }
 
-    if (/lvalue required as left operand/.test(linea)) {
-      return formatearError({
-        linea: numLinea,
-        codigo,
-        error: "Uso incorrecto del operador =.",
-        ayuda: "Para comparar se usa ==, no =."
-      });
-    }
-
-    return formatearError({
-      linea: numLinea,
-      codigo,
-      error: "Error de sintaxis.",
-      ayuda: "Revisá esta línea y la anterior."
-    });
+    return formatearError(numLinea, codigo, "Error de sintaxis.", "Revisá esta línea y la anterior.");
   }
 
-  return "❗ Error de compilación. Revisá la sintaxis.";
+  return "❗ Error de compilación.";
 }
 
-function formatearError({ linea, codigo, error, ayuda }) {
+function formatearError(linea, codigo, error, ayuda) {
   return `
 🚫 Error de compilación
 
@@ -232,19 +188,17 @@ ${ayuda}
 `.trim();
 }
 
-// ================= UTILIDADES =================
+/* ======================= UTIL ======================= */
 function limpiarArchivos(...archs) {
-  for (const file of archs) {
-    fs.unlink(file, () => {});
-  }
+  archs.forEach(f => fs.unlink(f, () => {}));
 }
 
-// ================= HEALTH =================
+/* ======================= HEALTH ======================= */
 app.get("/health", (req, res) => {
   res.type("text/plain").send("OK");
 });
 
-// ================= SERVER =================
+/* ======================= SERVER ======================= */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("Servidor escuchando en puerto", PORT);
