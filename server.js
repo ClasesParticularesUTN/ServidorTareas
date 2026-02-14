@@ -31,6 +31,10 @@ const TMP_DIR = path.join(__dirname, "tmp");
 if (!fs.existsSync(TMP_DIR)) {
   fs.mkdirSync(TMP_DIR);
 }
+app.get("/ping", (req, res) => {
+    res.send("ok");
+});
+
 
 /* ======================= ENDPOINT ======================= */
 app.post("/compile", (req, res) => {
